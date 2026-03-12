@@ -1,46 +1,47 @@
-# PolicyEval GOS
+# PolicyGOS
 
-PolicyEval GOS は、行政 PDF を入力として構造化データと Generative UI を生成するローカル実行型の OSS です。現行構成は `PyMuPDF` を主系、`PaddleOCR` を OCR fallback とする document backend と、React/Electron ベースの workspace UI で構成されています。
+PolicyGOS は、行政・政策関連 PDF をもとに、住民向けや議員向けの briefing を生成するためのローカル実行型 OSS です。
 
-## 現在の到達点
+このリポジトリは、試作コードの置き場ではなく、実際に clone して動かせる公開用リポジトリとして整備しています。
 
-- 複数 PDF を 1 workspace で処理
-- `pdf_text_fast_path` による born-digital PDF の高速処理
-- OCR backend の async job API
-- Generative UI の browser / fullscreen / ZIP export
-- 実 PDF `R7【政策Ⅰ】政策推進プラン構成事業一覧表.pdf` での E2E 回帰
+## 1. 何ができるか
 
-## アーキテクチャ
+- prompt-first の composer から briefing を起動する
+- PDF を composer に添付して、質問と一緒に扱う
+- OCR / repair / source discovery を使って PDF を処理する
+- browser / fullscreen / ZIP export の各出力を扱う
+- 実 PDF を使った E2E で主要フローを確認する
 
-- frontend: `policyevaluationGOS/`
-  - React + Vite + Electron
-  - workspace/session 管理
-  - table parsing / UI generation / export
-- backend: `document_ocr_api/`
-  - FastAPI
-  - PyMuPDF first extraction
-  - PaddleOCR fallback
-  - normalized JSON / markdown / csv output
+## 2. 想定する利用者
 
-## 推奨開発環境
+- 行政資料を住民向けに説明したい人
+- 政策 PDF の論点や評価指標を briefing として整理したい人
+- PDF を添付して質問起点の説明ページを作りたい人
 
-- Node.js 18+
-- Python 3.12
-- macOS Apple Silicon または Windows
-- 任意: Gemini API key または Ollama
+## 3. リポジトリ構成
 
-`PaddleOCR` は Python 3.14 ではそのまま動かないため、backend は Python 3.12 の仮想環境を既定にしています。
+- `policyevaluationGOS/`
+  - React + Vite + Electron ベースの frontend
+  - prompt-first の composer UI
+  - PDF 添付、preview、export、E2E テスト
+- `document_ocr_api/`
+  - FastAPI ベースの backend
+  - PDF 読み込み、OCR fallback、repair、source discovery
+- `docs-open/`
+  - 公開向けドキュメント
+- `docs/`
+  - 開発補助・技術メモ寄りの文書
 
-## クイックスタート
+## 4. クイックスタート
 
-### 1. frontend の依存関係
+### 4.1 frontend 依存関係
 
 ```bash
 cd policyevaluationGOS
 npm install
 ```
 
-### 2. backend の依存関係
+### 4.2 backend 依存関係
 
 ```bash
 cd document_ocr_api
@@ -53,57 +54,45 @@ pip install paddlepaddle paddleocr 'paddlex[ocr]'
 
 Windows では `py -3.12 -m venv venv312` を使ってください。
 
-### 3. backend 起動
+### 4.3 推奨起動
 
 ```bash
 cd policyevaluationGOS
-npm run backend:dev
+npm run debug:full
 ```
 
-### 4. frontend / Electron 起動
+この起動フローでは backend identity を検証し、ローカル backend は空いている 5 桁 port に自動で立ち上がります。
 
-ブラウザ UI:
-
-```bash
-cd policyevaluationGOS
-npm run dev
-```
-
-Electron:
-
-```bash
-cd policyevaluationGOS
-npm run electron:dev:external-backend
-```
-
-## よく使うコマンド
+## 5. よく使うコマンド
 
 ```bash
 cd policyevaluationGOS
 npm run type-check
-npm run lint
 npm test
-npm run test:e2e:real
-npm run debug:ocr:json
+npm run build
+npx playwright test tests/e2e/workspace-real-pdf.spec.ts
 ```
 
-## 実データでの確認状況
+## 6. ドキュメント
 
-対象:
+公開向け文書は `docs-open/` を参照してください。
 
-- `R7【政策Ⅰ】政策推進プラン構成事業一覧表.pdf`
+- `docs-open/overview-ja.md`
+- `docs-open/development-ja.md`
+- `docs-open/publication-notes-ja.md`
 
-確認済み:
+コミュニティ向けファイル:
 
-- backend JSON: `pdf_text_fast_path`
-- 実 PDF E2E: Generative UI 表示まで通過
-- 画像入力 smoke test: `ocr_engine = paddleocr`
+- `CONTRIBUTING.md`
+- `SECURITY.md`
 
-## 既知の残課題
+## 7. 注意事項
 
-- スキャン表の構造抽出は `PaddleOCR OCR` だけでは弱く、`PP-StructureV3` 連携を継続改善中
-- legacy 互換のため一部の `yomitoku_*` ファイル名や env 名称が残っていますが、backend 本体は `document_ocr_api/` に移行済みです
+- 本 OSS はローカル実行を前提としています
+- OCR 精度や表構造抽出精度は PDF 品質に依存します
+- 一部の flow では Gemini API key など外部 LLM の設定が必要です
+- backend の identity を検証しない古い起動方法では、誤った local service に接続する可能性があります
 
-## ライセンス
+## 8. ライセンス
 
 MIT
