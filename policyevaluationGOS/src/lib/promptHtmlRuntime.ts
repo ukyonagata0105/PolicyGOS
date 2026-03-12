@@ -1,4 +1,5 @@
 import { generateHtmlWithFallback } from '@/lib/llmProviders';
+import { deriveCandidateBundle, deriveProjectRowsCsv } from '@/lib/projectExtractor';
 import { resolveWorkspaceDocumentDigest } from '@/lib/pipelineContracts';
 import { createPromptWorkspaceDocument } from '@/lib/promptGeneration';
 import { buildAudienceLead, buildPromptContext, buildWorkspaceSummary } from '@/lib/workspace';
@@ -90,6 +91,8 @@ function buildPromptHtmlSystemPrompt(
     'The output should feel like a polished briefing surface, not a generic dashboard.',
     'Preserve conversation continuity across follow-up turns.',
     'When PDF context exists, reflect that source explicitly in the page.',
+    'When exact metric values are present in the extracted policy context, use those exact values and do not replace them with placeholders or guessed brackets.',
+    'If exact values are not present in the provided context, explicitly say the value could not be confirmed instead of inventing one.',
     `Audience: ${userProfile.audience}`,
     `Reading preference: ${userProfile.readingPreference}`,
     `Display constraint: ${userProfile.displayConstraint}`,
@@ -113,6 +116,8 @@ function buildPromptHtmlUserPrompt(
     .map((document, index) => {
       const digest = resolveWorkspaceDocumentDigest(document);
       const layoutExcerpt = normalizeInlineText(document.rawLayoutText || document.structuringText || document.ocrText || '').slice(0, 1800);
+      const metricsContext = buildMetricsContext(document);
+      const csvPreview = buildCsvPreview(document);
       return [
         `Document ${index + 1}: ${document.name}`,
         `Municipality: ${digest?.municipality || document.collectionSource.municipality || '未抽出'}`,
@@ -122,6 +127,8 @@ function buildPromptHtmlUserPrompt(
         `Document type: ${document.documentType || 'unknown'}`,
         `Key points: ${(document.structuredData?.keyPoints || []).map((point) => point.text).join(' / ') || 'none'}`,
         `Excerpt: ${layoutExcerpt || 'none'}`,
+        metricsContext ? `Exact metrics:\n${metricsContext}` : 'Exact metrics: none',
+        csvPreview ? `Structured rows CSV:\n${csvPreview}` : 'Structured rows CSV: none',
       ].join('\n');
     })
     .join('\n\n');
@@ -237,6 +244,72 @@ function stripHtmlTags(value: string): string {
 
 function normalizeInlineText(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
+}
+
+function buildMetricsContext(document: WorkspaceDocument): string {
+  const metricLines: string[] = [];
+
+  for (const project of document.projectRecords.slice(0, 12)) {
+    const indicators = project.indicators
+      .map((indicator) => {
+        const values = [
+          indicator.plannedValue ? `計画=${indicator.plannedValue}` : '',
+          indicator.actualValue ? `実績=${indicator.actualValue}` : '',
+          indicator.targetValue ? `目標=${indicator.targetValue}` : '',
+          indicator.achievement ? `達成度=${indicator.achievement}` : '',
+        ].filter(Boolean);
+
+        return values.length > 0
+          ? `- ${indicator.indicatorType}: ${indicator.name}${indicator.unit ? ` (${indicator.unit})` : ''} / ${values.join(' / ')}`
+          : '';
+      })
+      .filter(Boolean);
+
+    if (indicators.length > 0) {
+      metricLines.push(`[${project.projectName}]`);
+      metricLines.push(...indicators);
+    }
+  }
+
+  if (metricLines.length > 0) {
+    return clampPromptBlock(metricLines.join('\n'), 4000);
+  }
+
+  const bundle = deriveCandidateBundle(document);
+  if (!bundle || bundle.candidateRows.length === 0) {
+    return '';
+  }
+
+  const candidateLines = bundle.candidateRows
+    .slice(0, 20)
+    .map((row) => {
+      const values = [
+        row.activityIndicatorName ? `活動指標=${row.activityIndicatorName}` : '',
+        row.indicatorUnit ? `単位=${row.indicatorUnit}` : '',
+        row.actualValue ? `実績=${row.actualValue}` : '',
+        row.targetValue ? `目標=${row.targetValue}` : '',
+      ].filter(Boolean);
+      return values.length > 0 ? `- ${row.projectNameCandidate || row.projectSummaryCandidate || row.sourceReference}: ${values.join(' / ')}` : '';
+    })
+    .filter(Boolean);
+
+  return clampPromptBlock(candidateLines.join('\n'), 4000);
+}
+
+function buildCsvPreview(document: WorkspaceDocument): string {
+  const csv = deriveProjectRowsCsv(document) || document.rawCsv || '';
+  if (!csv.trim()) {
+    return '';
+  }
+  return clampPromptBlock(csv, 3200);
+}
+
+function clampPromptBlock(value: string, maxLength: number): string {
+  const normalized = value.trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, maxLength).trim()}\n...[truncated]`;
 }
 
 function escapeHtml(value: string): string {

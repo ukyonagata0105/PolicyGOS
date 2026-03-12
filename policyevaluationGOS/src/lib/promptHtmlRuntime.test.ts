@@ -73,4 +73,45 @@ describe('promptHtmlRuntime', () => {
     });
     expect(result.ui?.warnings?.[0]).toContain('Gemini quota exceeded');
   });
+
+  it('passes exact extracted metric values into the html prompt context when available', async () => {
+    const document = createGeneratedUIConsumerDocument('metrics.pdf');
+    document.rawLayoutText = '活動指標と成果指標を含む政策評価表です。';
+
+    generateHtmlWithFallbackMock.mockResolvedValue({
+      success: true,
+      html: '<!DOCTYPE html><html lang="ja"><head><title>指標まとめ</title></head><body><main><h1>指標まとめ</h1></main></body></html>',
+      rawText: '<!DOCTYPE html><html lang="ja"><head><title>指標まとめ</title></head><body><main><h1>指標まとめ</h1></main></body></html>',
+      provider: 'gemini',
+      model: 'gemini-flash-lite-latest',
+    });
+
+    await generatePromptHtmlRuntime([document], generatedUICompatibilityProfile, {
+      prompt: 'このドキュメントの評価指標をまとめてください。',
+      mode: 'fresh',
+      messages: [],
+      contextDocumentId: document.id,
+    });
+
+    expect(generateHtmlWithFallbackMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining('Exact metrics:'),
+      })
+    );
+    expect(generateHtmlWithFallbackMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining('交通空白地の解消率'),
+      })
+    );
+    expect(generateHtmlWithFallbackMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining('実績=65%'),
+      })
+    );
+    expect(generateHtmlWithFallbackMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining('目標=80%'),
+      })
+    );
+  });
 });
