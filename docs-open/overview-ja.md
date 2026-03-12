@@ -2,6 +2,8 @@
 
 PolicyGOS は、行政 PDF から briefing を生成するためのローカル実行型 OSS です。
 
+![PolicyGOS prompt-first shell](images/prompt-first-shell.png)
+
 ## 想定する利用者
 
 - 行政資料を住民向けに説明したい人
